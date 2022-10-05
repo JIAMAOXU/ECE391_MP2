@@ -1,0 +1,53 @@
+Date: 9/20/2022
+Description: Image outside screen drawing  incorrectly
+Where: ModeX.C : line 578: draw_vertical_line function
+Reason: scroll_x_dim and scroll_y_dim flipped
+Solution: Draw vertical line issue. Switch scroll x and scroll y
+
+Date: 9/21/2022
+Description: Status bar was divided into vertical line segments
+Where: text.c: line 583: text_to_graphics function
+Reason: Used wrong data type for buffer address. 
+Solution: Change buffer address to int
+
+Date: 9/21/2022
+Description: Nothing appear on status bar
+Where: text.c: line 583: text_to_graphics function
+Reason: User bitmask method, but not shifted
+Solution: shift bit mask when loop over row
+
+Date: 9/21/2022
+Description: Text mess up
+Where: text.c: line 583: text_to_graphics function
+Reason: Index for font_data was wrong
+Solution: char index first, and then column index
+              font_data[(int)string[char_index]][column_index]
+
+Date: 9/22/2022
+Description: Text first appear on right and then appear on left 
+Where: text.c: line 583: text_to_graphics function
+Reason: address calculation errror
+Solution: redesign the buffer address equation
+
+Date: 9/23/2022
+Description: Text appear only on center
+Where: text.c: line 583: text_to_graphics function
+Reason: Did not seperate cases: Text on left, center, right
+Solution: add int left, int center, int right to the function to specify each situation
+               assign different start position for each cases
+
+Date: 9/23/2022
+Description: Text appear on reverse order
+Where: text.c: line 583: text_to_graphics function
+Reason: I shifted the string for each loop, thus string was read from right to left
+Solution: use bitmask method, keep string stay, set up bitmask 1000000, shift left for each loop
+
+Date: 9/23/2022
+Description: big compilation error
+Where: adventure.o
+Reason: missed a ";" in header file
+Solution: add ";" to header file
+
+
+
+
