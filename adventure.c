@@ -186,6 +186,20 @@ cancel_status_thread (void* ignore)
     (void)pthread_cancel (status_thread_id);
 }
 
+/* 
+ * cancel_tux_thread
+ *   DESCRIPTION: Terminates the tux thread.  Used as
+ *                a cleanup method to ensure proper shutdown.
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */
+static void
+cancel_tux_thread (void* ignore)
+{
+    (void)pthread_cancel (tux_thread_id);
+}
 
 /* 
  * game_loop

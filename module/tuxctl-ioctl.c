@@ -47,7 +47,9 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 
 		switch(a){
 		case MTCP_ACK:
-			return 0;s
+		// lower ACK to 0
+		MTCP_ACK = 0;
+			return 0;
 
 		case MTCP_RESET:
 			return 0;
@@ -90,6 +92,7 @@ tuxctl_ioctl (struct tty_struct* tty, struct file* file,
 		return tux_button(tty,arg);
 	case TUX_SET_LED:
 		return tux_LED(tty,arg);
+	// tux tell kernal when finish processing opcode
 	case TUX_LED_ACK:
 		return 0;
 	case TUX_LED_REQUEST:
