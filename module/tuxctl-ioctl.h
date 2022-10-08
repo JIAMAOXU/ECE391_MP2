@@ -11,7 +11,6 @@
 #define TUX_LED_ACK _IO('E', 0x15)
 
 struct button {
-	spinlock_t lock;
 	unsigned long buttons;
 };
 

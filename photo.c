@@ -559,7 +559,7 @@ qsort(level4, 4096, sizeof(struct octree), compare_function );
 
 //------------------------------------Calculate AVG FOR LEVEL 4--------------------------------//
 // calculate avg for level 4
-// palette has RGB 5:6:5
+// palette has RGB 6:6:6
 for (i = 0; i<128; i++){
 	if (level4[i].pixel_loop_counter != 0){
 		p->palette[i][0]= (((level4[i].red_sum)   / (level4[i].pixel_loop_counter))<<1);
@@ -589,6 +589,8 @@ for (i=128; i<4096; i++){
 
 //---------------------------CALCULATE AVG FOR LEVEL 2-------------------------//
 // calculate avg for level 2
+// palette has RGB 6:6:6
+
 for (i = 0; i<64; i++){
 	if (level2[i].pixel_loop_counter != 0){
 		// level 2 store in palette after level 4, so start at i+128
