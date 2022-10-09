@@ -734,6 +734,24 @@ show_status (const char* s)
     (void)pthread_mutex_unlock (&msg_lock);
 }
 
+void* tux_thread(void * arg){
+	tux_cmd = get_tux_command;
+	cmd = get_command();
+	
+	while (1) {
+		pthread_mutex_lock(&lock);
+		while (!buttons_pressed){
+		pthread_cond_wait(&cv, &lock);
+	}
+		switch (buttons) {
+	}
+		pthread_mutex_unlock(&lock);
+	}
+
+	
+return NULL;
+} 
+
 
 /* 
  * main
@@ -766,6 +784,13 @@ main ()
         PANIC ("failed to create status thread");
     }
     push_cleanup (cancel_status_thread, NULL); {
+	
+    /* Create status message thread. */
+    if (0 != pthread_create (&status_thread_id, NULL, tux_thread, NULL)) {
+        PANIC ("failed to create status thread");
+    }
+    push_cleanup (cancel_status_thread, NULL); {
+	
 
 	/* Start mode X. */
 	if (0 != set_mode_X (fill_horiz_buffer, fill_vert_buffer)) {
