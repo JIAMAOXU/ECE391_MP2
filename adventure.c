@@ -149,7 +149,7 @@ static int time_is_after (struct timeval* t1, struct timeval* t2);
 /* file-scope variables */
 
 static game_info_t game_info; /* game information */
-
+int32_t enter_room;
 
 /* 
  * The variables below are used to keep track of the status message helper
@@ -165,9 +165,13 @@ static game_info_t game_info; /* game information */
  * is changed, the helper thread must be notified by signaling it with the 
  * condition variable msg_cv (while holding the msg_lock).
  */
-static pthread_t status_thread_id;
+static pthread_t status_thread_id, tux_thread_id ;
 static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  msg_cv = PTHREAD_COND_INITIALIZER;
+
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
+
 static char status_msg[STATUS_MSG_LEN + 1] = {'\0'};
 
 
@@ -186,6 +190,11 @@ cancel_status_thread (void* ignore)
     (void)pthread_cancel (status_thread_id);
 }
 
+static void
+cancel_tux_thread (void* ignore)
+{
+    (void)pthread_cancel (tux_thread_id);
+}
 
 /* 
  * game_loop
@@ -735,19 +744,35 @@ show_status (const char* s)
 }
 
 void* tux_thread(void * arg){
-	tux_cmd = get_tux_command;
-	cmd = get_command();
-	
-	while (1) {
-		pthread_mutex_lock(&lock);
-		while (!buttons_pressed){
-		pthread_cond_wait(&cv, &lock);
-	}
-		switch (buttons) {
-	}
-		pthread_mutex_unlock(&lock);
-	}
+	cmd_t cmd;
 
+	(void)pthread_mutex_lock(&lock);
+
+	cmd = get_tux_command();
+	
+    switch (cmd) {
+    case CMD_UP:    move_photo_down();  break;
+    case CMD_RIGHT: move_photo_left();  break;
+	case CMD_DOWN:  move_photo_up();    break;
+    case CMD_LEFT:  move_photo_right(); break;
+    case CMD_MOVE_LEFT:
+    	enter_room = (TC_CHANGE_ROOM == try_to_move_left(&game_info.where));
+        break;
+    case CMD_ENTER:
+        enter_room = (TC_CHANGE_ROOM == try_to_enter(&game_info.where));
+        break;
+    case CMD_MOVE_RIGHT:
+        enter_room = (TC_CHANGE_ROOM == try_to_move_right(&game_info.where));
+        break;
+    case CMD_QUIT: 
+		return GAME_QUIT;
+    default: 
+		break;
+        }
+	(void)pthread_mutex_unlock (&lock);
+        if (NULL == game_info.where) {
+            return GAME_WON;
+        }
 	
 return NULL;
 } 
@@ -784,14 +809,14 @@ main ()
         PANIC ("failed to create status thread");
     }
     push_cleanup (cancel_status_thread, NULL); {
-	
-    /* Create status message thread. */
-    if (0 != pthread_create (&status_thread_id, NULL, tux_thread, NULL)) {
-        PANIC ("failed to create status thread");
-    }
-    push_cleanup (cancel_status_thread, NULL); {
-	
 
+	open_and_initial();
+	/*create the tux thread*/
+	if (0 != pthread_create(&tux_thread_id, NULL, tux_thread, NULL)) {
+        PANIC("failed to create tux thread");
+    }
+    push_cleanup(cancel_tux_thread, NULL);
+	
 	/* Start mode X. */
 	if (0 != set_mode_X (fill_horiz_buffer, fill_vert_buffer)) {
 	    PANIC ("cannot initialize mode X");
@@ -882,5 +907,6 @@ sanity_check ()
     /* Return success/failure. */
     return ret_val;
 }
+
 #endif /* !defined(NDEBUG) */
 
