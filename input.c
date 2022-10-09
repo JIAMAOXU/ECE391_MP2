@@ -58,25 +58,15 @@
 #include "input.h"
 #include "module/tuxctl-ioctl.h"
 /* set to 1 and compile this file by itself to test functionality */
-#define TEST_INPUT_DRIVER 1
+#define TEST_INPUT_DRIVER 0
  
 /* set to 1 to use tux controller; otherwise, uses keyboard input */
-#define USE_TUX_CONTROLLER 1
+#define USE_TUX_CONTROLLER 0
  
  
 /* stores original terminal settings */
 static struct termios tio_orig;
-static int fd;
-static cmd_t prev = CMD_NONE;
- 
- 
-/* open the serial port and set the Tux controller line discipline */
-void open_tux_controller() {
-    fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
-    int ldisc_num = N_MOUSE;
-    ioctl(fd, TIOCSETD, &ldisc_num);
-    ioctl(fd, TUX_INIT);    
-}
+int fd;
  
  
 /*
@@ -95,6 +85,7 @@ int
 init_input ()
 {
     struct termios tio_new;
+ 
     /*
      * Set non-blocking mode so that stdin can be read without blocking
      * when no new keystrokes are available.
@@ -124,8 +115,13 @@ init_input ()
     if (tcsetattr (fileno (stdin), TCSANOW, &tio_new) != 0) {
     perror ("tcsetattr to set stdin terminal settings");
     return -1;
-    }  
+    }
+ 
     /* Return success. */
+    fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
+    int ldisc_num = N_MOUSE;
+    ioctl(fd, TIOCSETD, &ldisc_num);
+    ioctl(fd, TUX_INIT);
     return 0;
 }
  
@@ -179,9 +175,9 @@ typed_a_char (char c)
 cmd_t
 get_command ()
 {
-//#if (USE_TUX_CONTROLLER == 0) /* use keyboard control with arrow keys */
+#if (USE_TUX_CONTROLLER == 0) /* use keyboard control with arrow keys */
     static int state = 0;             /* small FSM for arrow keys */
-//#endif
+#endif
     static cmd_t command = CMD_NONE;
     cmd_t pushed = CMD_NONE;
     int ch;
@@ -193,7 +189,7 @@ get_command ()
     if (ch == '`')
         return CMD_QUIT;
    
-//#if (USE_TUX_CONTROLLER == 0) /* use keyboard control with arrow keys */
+#if (USE_TUX_CONTROLLER == 0) /* use keyboard control with arrow keys */
     /*
      * Arrow keys deliver the byte sequence 27, 91, and 'A' to 'D';
      * we use a small finite state machine to identify them.
@@ -269,14 +265,14 @@ get_command ()
         }
         break;
     }
-// #else /* USE_TUX_CONTROLLER */
-//  /* Tux controller mode; still need to support typed commands. */
-//  if (valid_typing (ch)) {
-//      typed_a_char (ch);
-//  } else if (10 == ch || 13 == ch) {
-//      pushed = CMD_TYPED;
-//  }
-// #endif /* USE_TUX_CONTROLLER */
+#else /* USE_TUX_CONTROLLER */
+    /* Tux controller mode; still need to support typed commands. */
+    if (valid_typing (ch)) {
+        typed_a_char (ch);
+    } else if (10 == ch || 13 == ch) {
+        pushed = CMD_TYPED;
+    }
+#endif /* USE_TUX_CONTROLLER */
     }
  
     /*
@@ -289,52 +285,57 @@ get_command ()
     return pushed;
 }
  
- 
 cmd_t
-get_tux_command()
+get_tux_command ()
 {
+    static cmd_t command = CMD_NONE;
     cmd_t pushed = CMD_NONE;
-    unsigned char buttons = 0;
-    ioctl(fd, TUX_BUTTONS, &buttons);
-    switch (buttons & 0xFF)
-    {
-            case 0xFE:
-                pushed = CMD_QUIT;
-                break;
-            case 0xFD:
-                pushed = CMD_MOVE_LEFT;
-                break;
-            case 0xFB:
-                pushed = CMD_ENTER;
-                break;
-            case 0xF7:
-                pushed = CMD_MOVE_RIGHT;
-                break;
-            case 0xEF:
-                pushed = CMD_UP;
-                break;
-            case 0xBF:
-                pushed = CMD_LEFT;
-                break;
-            case 0xDF:
-                pushed = CMD_DOWN;
-                break;
-            case 0x7F:
-                pushed = CMD_RIGHT;
-                break;
-            default:
-                pushed = CMD_NONE;
+    int ch;
+ 
+    /* Read all characters from stdin. */
+    while ((ch = getc (stdin)) != EOF) {
+ 
+    /* Backquote is used to quit the game. */
+    if (ch == '`')
+        return CMD_QUIT;
     }
-    if (pushed != CMD_NONE && pushed == prev) {
-        return CMD_NONE;
+ 
+    unsigned char button;
+    ioctl(fd, TUX_BUTTONS, &button);
+    if ((~button) & 0x80){
+        pushed = CMD_RIGHT;
     }
-    prev = pushed;
+    else if ((~button) & 0x40){
+        pushed = CMD_LEFT;
+    }
+    else if ((~button) & 0x20){
+        pushed = CMD_DOWN;
+    }
+    else if ((~button) & 0x10){
+        pushed = CMD_UP;
+    }
+    else if ((~button) & 0x08){
+        pushed = CMD_MOVE_RIGHT;
+    }
+    else if ((~button) & 0x04){
+        pushed = CMD_ENTER;
+    }
+    else if ((~button) & 0x02){
+        pushed = CMD_MOVE_LEFT;
+    }
+    else {
+        pushed = CMD_NONE;
+    }
+ 
+    /*
+     * Once a direction is pushed, that command remains active
+     * until a turn is taken.
+     */
+    if (pushed == CMD_NONE) {
+        command = CMD_NONE;
+    }
     return pushed;
 }
- 
- 
- 
- 
 /*
  * shutdown_input
  *   DESCRIPTION: Cleans up state associated with input control.  Restores
@@ -363,66 +364,26 @@ shutdown_input ()
 void
 display_time_on_tux (int num_seconds)
 {
-
-	int ten_minutes, one_minutes, ten_seconds, one_seconds;
-	unsigned long arg;
-
-	one_seconds = num_seconds;
-	arg = ten_minutes = one_minutes = ten_seconds = 0;
-
-	// if time is more than 60 seconds we put it into minutes
-	while(one_seconds >= 60)
-	{
-		one_seconds -= 60;
-		one_minutes++;
-	}
-
-	// if time is more than 10 minutes we put into 10 minutes (4th led)
-	while(one_minutes >= 10)
-	{
-		one_minutes -= 10;
-		ten_minutes++;
-	}
-
-	// second led number
-	while(one_seconds >= 10 && one_seconds < 60)
-	{
-		one_seconds -= 10;
-		ten_seconds++;
-	}
-
-	// debug if statement
-	if(one_seconds >= 10 || ten_seconds >= 10 || one_minutes >= 10 || ten_minutes >= 10)
-	{
-		// printf("some while loop error\n");
-	}
-
-	// setting 16 LSBs for arg
-	arg = ((ten_minutes << 12) | (one_minutes << 8) | (ten_seconds << 4) | (one_seconds));
-
-	if(ten_minutes > 0)
-	{
-		// turn on 4 leds and dec
-		arg |= 0x040F0000;
-	}
-
-	else
-	{
-		// turn on 3 leds and dec
-		arg |= 0x04070000;
-	}
-
-	// Call to set the LEDs
-	ioctl(fd, TUX_SET_LED, arg);
-	return;
+    unsigned int min_ten = 0;
+    unsigned int min_one = 0;
+    unsigned int sec_ten = 0;
+    unsigned int sec_one = 0;
+    unsigned long arg = 0;
+    min_ten = ((num_seconds / 60) / 10);
+    min_one = ((num_seconds / 60) % 10);
+    sec_ten = ((num_seconds % 60) / 10);
+    sec_one = ((num_seconds % 60) % 10);
+    arg = (min_ten << 12) | (min_one << 8) | (sec_ten << 4) | (sec_one) | 0x040F0000;
+    ioctl(fd, TUX_SET_LED, arg);
 }
+ 
  
  
 #if (TEST_INPUT_DRIVER == 1)
 int
 main ()
 {
-    //int i = 0;
+	int i;
     cmd_t last_cmd = CMD_NONE;
     cmd_t cmd;
     static const char* const cmd_name[NUM_COMMANDS] = {
@@ -435,20 +396,23 @@ main ()
     perror ("ioperm");
     return 3;
     }
- 	open_tux_controller();
+ 
     init_input ();
     while (1) {
-        while ((cmd = get_command ()) == last_cmd);
+        while ((cmd = get_tux_command ()) == last_cmd);
     last_cmd = cmd;
     printf ("command issued: %s\n", cmd_name[cmd]);
     if (cmd == CMD_QUIT)
         break;
-    display_time_on_tux (83);
+    display_time_on_tux (i);
+	i++;
     }
     shutdown_input ();
     return 0;
 }
 #endif
+ 
+ 
  
  
 

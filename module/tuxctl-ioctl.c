@@ -32,14 +32,13 @@
 // explicit declaration of function used in this file
 int tuxctl_ioctl (struct tty_struct* tty, struct file* file, unsigned cmd, unsigned long arg);
 int tux_initial (struct tty_struct* tty);
-int tux_LED(struct tty_struct* tty,unsigned long arg);
+void tux_LED(struct tty_struct* tty,unsigned long arg);
 int tux_button (struct tty_struct* tty,unsigned long arg);
 
 
-//static struct button button;
+//long is 32bit
 static unsigned long LED_save;
 unsigned char button_value;
-spinlock_t lock;
 /************************ Protocol Implementation *************************/
 
 /* tuxctl_handle_packet()
@@ -47,29 +46,27 @@ spinlock_t lock;
  * tuxctl-ld.c. It calls this function, so all warnings there apply 
  * here as well.
  */
-int ACK =1; 
-unsigned int left, down;
+unsigned int LEFT, DOWN;
+// buffer used for initialization
+
 void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 {
     unsigned a, b, c;
     a = packet[0]; /* Avoid printk() sign extending the 8-bit */
     b = packet[1]; /* values when printing them. */
     c = packet[2];
+	unsigned char buf[2];
 
 		switch(a){
 		case MTCP_ACK:
 		// set ACK flag to 1
-			ACK =1;
 			break;
 
 		case MTCP_RESET:
-			// run initialization function
-			tux_initial (tty);
-			if (ACK = 1){
-			// restore LED value when reset
-				tux_LED (tty,LED_save);
-				ACK = 0;
-			}
+
+			tux_initial(tty);	
+			tux_LED (tty,LED_save);
+			
 			break ;
 
 		case MTCP_BIOC_EVENT:
@@ -81,9 +78,9 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 			// Here we have to flip "left" and "down"
 			// initial order: |Right|Down|Left|Up|C|B|A|Start
 			// correct order: |Right|Left|Down|Up|C|B|A|Start
-			left = (c & 0x02) >>1;
-			down = (c & 0x04) >>2; 
-			button_value = (b & 0xF) | ((c & 0xF) << 4) | (left << 6) | (down <<5);
+			LEFT = (c & 0x02) >>1;
+			DOWN = (c & 0x04) >>2; 
+			button_value =((b & 0xF) | ((c & 0x9) << 4) | (LEFT << 6) | (DOWN <<5));
 			break;
 		default:
 			return;
@@ -134,13 +131,10 @@ tuxctl_ioctl (struct tty_struct* tty, struct file* file,
 //------------------------- initialization---------------------------//
 int tux_initial (struct tty_struct* tty){
 	// buffer used for initialization
-	unsigned char buf [2];
-	// lock initialization
-	spin_lock_init (&lock);
-	lock = SPIN_LOCK_UNLOCKED;
+	unsigned char buf[2];
 	// initialize buffer
-	buf[0] = MTCP_LED_USR;
-	buf[1] = MTCP_BIOC_ON;
+	buf[0] = MTCP_BIOC_ON;
+	buf[1] = MTCP_LED_USR;
 	tuxctl_ldisc_put(tty, buf, 2);
 	// store LED state for reset
 	LED_save = 0;
@@ -150,7 +144,7 @@ int tux_initial (struct tty_struct* tty){
 }	
 
 //----------------------------- LED---------------------------//
-int tux_LED(struct tty_struct* tty,unsigned long arg){
+void tux_LED(struct tty_struct* tty,unsigned long arg){
 /* mask to display each number from 1 to 16 { 0,1,2,3
 										      4,5,6,7
 										      8,9,A,b,
@@ -161,21 +155,27 @@ unsigned char sixten_number_mask[16] = {0xE7, 0x06, 0xCB, 0x8F,
 										0xE1, 0x4F, 0xE9, 0xE8};
 
 // LED ON or OFF
-unsigned char LED_value [4];
+unsigned int LED_value[4];
 // LED buffer
 unsigned char buf[6];
 // The low 4 bits of the third byte specifies which LED’s should be turned on.
-unsigned char LED_ON_OFF = (arg &(0x0F<<16)) >> 16; 
+unsigned char LED_ON_OFF;
 // The low 4 bits of the highest byte (bits 27:24) specify whether the corresponding decimal points should be turned on. 
-unsigned char Decimal = (arg &(0x0F<<24)) >> 24;
+unsigned char Decimal;
 int i;
 // led buffer initialization
+
 buf[0] = MTCP_LED_SET;
 buf[1] = 0xF;
 buf[2] = 0;
 buf[3] = 0;
 buf[4] = 0;
 buf[5] = 0;
+// byte 0, lower 4 bit represent which led is on
+LED_ON_OFF = ((arg &(0x0F<<16)) >> 16);
+
+Decimal = ((arg &(0x0F<<24)) >> 24);
+// If ack =1 return
 
 // 	Mapping from 7-segment to bits
 //  The 7-segment display is:
@@ -198,15 +198,14 @@ buf[5] = 0;
 // | X | X | X | X | LED3 | LED2 | LED1 | LED0 | 
 // ----+---+---+---+------+------+------+------+
 //Loop to find correct LED musk, store in array form
-
+// The low 16-bits specify a number whose
+// hexadecimal value is to be displayed on the 7-segment displays
 for(i=0; i<4; i++){
-	LED_value[i] = sixten_number_mask [(arg&(0xF << (i*4))>> (i*4))];
+	LED_value[i] = sixten_number_mask[(( (arg & 0xFFFF) >> (4*i) )& 0xF)];
 }
 
 // loop to load LED value if led is on
 for(i=0; i<4; i++){
-	// The low 16-bits specify a number whose
-	// hexadecimal value is to be displayed on the 7-segment displays
 	if ((0x01 & (LED_ON_OFF >> i)) != 0){
 		buf[i+2] = LED_value[i];
 	}
@@ -214,11 +213,9 @@ for(i=0; i<4; i++){
 
 // loop to find decimal value
 for(i=0; i<4; i++){
-	if ( Decimal & (0x1 << i)!= 0){
-		buf[i+2] = LED_value[i] | 0x10;
-	}
+		buf[i+2] |= (((Decimal >> i)& 0x1)<<4);
 }
-
+LED_save = arg;
 tuxctl_ldisc_put(tty, buf, 6);
 	return 0;
 
@@ -227,14 +224,12 @@ tuxctl_ldisc_put(tty, buf, 6);
 //----------------------------- BUTTON---------------------------//
 int tux_button (struct tty_struct* tty,unsigned long arg){
 	// spin lock flag
-	unsigned long flag;
 	//check return value
-	int user_copy;
-	
+	unsigned int user_copy;
+	unsigned long* button_pointer;
+	button_pointer= &(button_value);
 	//copy button value to user space 
-	spin_lock_irqsave(&(lock), flag);
-	user_copy = copy_to_user((void *)arg, (void*)button, sizeof(long));			
-	spin_unlock_irqrestore(&(lock), flag);
+	user_copy = copy_to_user((void *)arg, (void*)button_pointer, sizeof(long));			
 	// check return value
 	if(user_copy == 0 ) 
 		return 0;
