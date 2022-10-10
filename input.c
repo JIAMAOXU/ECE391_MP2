@@ -294,6 +294,7 @@ cmd_t
 get_tux_command ()
 {
     static cmd_t command = CMD_NONE;
+    static cmd_t prev_command = CMD_NONE;
     cmd_t pushed = CMD_NONE;
     int ch;
  
@@ -328,10 +329,19 @@ get_tux_command ()
      * Once a direction is pushed, that command remains active
      * until a turn is taken.
      */
-    if (pushed == CMD_NONE) {
-        command = CMD_NONE;
+    if ((pushed == CMD_MOVE_RIGHT) |(pushed == CMD_ENTER) |(pushed == CMD_MOVE_LEFT)) {
+        if(pushed == prev_command){
+            command = CMD_NONE;
+        }
+        else{
+            command = pushed;
+        }
     }
-    return pushed;
+    else{
+        command = pushed;
+    }
+    prev_command = pushed; 
+    return command;
 }
 /*
  * shutdown_input

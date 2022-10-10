@@ -132,7 +132,7 @@ static const typed_cmd_t cmd_list[] = {
     {NULL, 0, 0}
 };
 
-cmd_t tux_cmd;
+
 /* local functions--see function headers for details */
 
 static void cancel_status_thread (void* ignore);
@@ -152,7 +152,9 @@ static int time_is_after (struct timeval* t1, struct timeval* t2);
 
 static game_info_t game_info; /* game information */
 int32_t enter_room;
-
+static int button_pressed = 0;
+static cmd_t cmd;
+static cmd_t tux_cmd;
 /* 
  * The variables below are used to keep track of the status message helper
  * thread, with Posix thread id recorded in status_thread_id.  
@@ -167,10 +169,10 @@ int32_t enter_room;
  * is changed, the helper thread must be notified by signaling it with the 
  * condition variable msg_cv (while holding the msg_lock).
  */
-static pthread_t status_thread_id, tux_thread_id ;
+static pthread_t status_thread_id;
+static pthread_t tux_thread_id ;
 static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  msg_cv = PTHREAD_COND_INITIALIZER;
-
 static pthread_mutex_t tuxlock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  tuxcv = PTHREAD_COND_INITIALIZER;
 
@@ -216,7 +218,7 @@ game_loop ()
     struct timeval start_time, tick_time;
 
     struct timeval cur_time; /* current time (during tick)      */
-    cmd_t cmd;               /* command issued by input control */
+           /* command issued by input control */
     /* Record the starting time--assume success. */
     (void)gettimeofday (&start_time, NULL);
 
@@ -312,6 +314,18 @@ game_loop ()
 	 */
 	display_time_on_tux(cur_time.tv_sec - start_time.tv_sec);
 	cmd = get_command ();
+	tux_cmd = get_tux_command ();
+	if (tux_cmd == CMD_NONE) {
+		button_pressed = 0;
+	} else {
+		button_pressed = 1;
+	}
+    (void) pthread_mutex_lock(&tuxlock);
+    if (button_pressed){
+        pthread_cond_signal(&tuxcv);
+    }
+	(void) pthread_mutex_unlock(&tuxlock);
+	button_pressed = 0;
 	switch (cmd) {
 	    case CMD_UP:    move_photo_down ();  break;
 	    case CMD_RIGHT: move_photo_left ();  break;
@@ -758,7 +772,7 @@ static void* tux_thread(void* ignore){
 // 	struct timeval start_time, tick_time;
 
 //   	struct timeval cur_time; /* current time(during tick)      */
-	cmd_t cmd;
+
 // 	/* Record the starting time--assume success. */
 //     (void)gettimeofday(&start_time, NULL);
    
@@ -770,12 +784,12 @@ static void* tux_thread(void* ignore){
 //     }
 
 	while(1){	
-	// (void)pthread_mutex_lock(&tuxlock);
-	// 	while(tux_cmd == CMD_NONE){
-	// 	pthread_cond_wait(&tuxcv, &tuxlock);
-	// }
-	cmd = get_tux_command();
-    switch (cmd) {
+    tux_cmd = get_tux_command ();
+	(void) pthread_mutex_lock(&tuxlock);
+	while (!button_pressed) {
+		pthread_cond_wait(&tuxcv, &tuxlock);
+	}
+    switch (tux_cmd) {
     case CMD_UP:    move_photo_down();  break;
     case CMD_RIGHT: move_photo_left();  break;
 	case CMD_DOWN:  move_photo_up();    break;
@@ -791,13 +805,17 @@ static void* tux_thread(void* ignore){
         break;
     case CMD_QUIT: 
 		result = GAME_QUIT;
+	if (handle_typing ()) {
+            enter_room = 1;
+        }
     default: 
 		break;
         }
-	(void)pthread_mutex_unlock (&tuxlock);
         if (NULL == game_info.where) {
             result = GAME_WON;
         }
+	(void)pthread_mutex_unlock (&tuxlock);
+	button_pressed = 0;
 
 	//  /*
     //      * Wait for tick.  The tick defines the basic timing of our
@@ -857,20 +875,18 @@ main ()
 	PANIC ("failed sanity checks");
     }
 
-	open_and_initial();
-	/*create the tux thread*/
-	if (0 != pthread_create(&tux_thread_id, NULL, tux_thread, NULL)) {
-        PANIC("failed to create tux thread");
-    }
-    push_cleanup(cancel_tux_thread, NULL);{
-
     /* Create status message thread. */
     if (0 != pthread_create (&status_thread_id, NULL, status_thread, NULL)) {
         PANIC ("failed to create status thread");
     }
     push_cleanup (cancel_status_thread, NULL); {
 
-
+	open_and_initial();
+	/*create the tux thread*/
+	if (0 != pthread_create(&tux_thread_id, NULL, tux_thread, NULL)) {
+        PANIC("failed to create tux thread");
+    }
+    push_cleanup(cancel_tux_thread, NULL);{
 	
 	/* Start mode X. */
 	if (0 != set_mode_X (fill_horiz_buffer, fill_vert_buffer)) {
@@ -963,4 +979,3 @@ sanity_check ()
 }
 
 #endif /* !defined(NDEBUG) */
-
