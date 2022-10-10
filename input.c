@@ -118,13 +118,18 @@ init_input ()
     }
  
     /* Return success. */
-    fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
-    int ldisc_num = N_MOUSE;
-    ioctl(fd, TIOCSETD, &ldisc_num);
-    ioctl(fd, TUX_INIT);
+	open_and_initial();
     return 0;
 }
  
+void open_and_initial(){
+	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
+	int ldsic_num = N_MOUSE;
+	ioctl(fd, TIOCSETD, &ldsic_num);
+	ioctl(fd, TUX_INIT);
+}
+
+
 static char typing[MAX_TYPED_LEN + 1] = {'\0'};
  
 const char*
@@ -302,29 +307,21 @@ get_tux_command ()
  
     unsigned char button;
     ioctl(fd, TUX_BUTTONS, &button);
-    if ((~button) & 0x80){
-        pushed = CMD_RIGHT;
+    if ((~button) & 0x80){pushed = CMD_RIGHT;
     }
-    else if ((~button) & 0x40){
-        pushed = CMD_LEFT;
+    else if ((~button) & 0x40){pushed = CMD_LEFT;
     }
-    else if ((~button) & 0x20){
-        pushed = CMD_DOWN;
+    else if ((~button) & 0x20){pushed = CMD_DOWN;
     }
-    else if ((~button) & 0x10){
-        pushed = CMD_UP;
+    else if ((~button) & 0x10){pushed = CMD_UP;
     }
-    else if ((~button) & 0x08){
-        pushed = CMD_MOVE_RIGHT;
+    else if ((~button) & 0x08){pushed = CMD_MOVE_RIGHT;
     }
-    else if ((~button) & 0x04){
-        pushed = CMD_ENTER;
+    else if ((~button) & 0x04){pushed = CMD_ENTER;
     }
-    else if ((~button) & 0x02){
-        pushed = CMD_MOVE_LEFT;
+    else if ((~button) & 0x02){pushed = CMD_MOVE_LEFT;
     }
-    else {
-        pushed = CMD_NONE;
+    else {pushed = CMD_NONE;
     }
  
     /*
@@ -383,7 +380,6 @@ display_time_on_tux (int num_seconds)
 int
 main ()
 {
-	int i;
     cmd_t last_cmd = CMD_NONE;
     cmd_t cmd;
     static const char* const cmd_name[NUM_COMMANDS] = {
@@ -404,8 +400,7 @@ main ()
     printf ("command issued: %s\n", cmd_name[cmd]);
     if (cmd == CMD_QUIT)
         break;
-    display_time_on_tux (i);
-	i++;
+    display_time_on_tux (83);
     }
     shutdown_input ();
     return 0;
@@ -415,4 +410,5 @@ main ()
  
  
  
+
 

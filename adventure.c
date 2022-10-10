@@ -49,6 +49,7 @@
 #include "photo.h"
 #include "text.h"
 #include "world.h"
+#include "module/tuxctl-ioctl.h"
 
 
 /*
@@ -66,6 +67,7 @@ static int sanity_check (void);
 #define TICK_USEC      50000 /* tick length in microseconds          */
 #define STATUS_MSG_LEN 40    /* maximum length of status message     */
 #define MOTION_SPEED   2     /* pixels moved per command             */
+
 
 /* outcome of the game */
 typedef enum {GAME_WON, GAME_QUIT} game_condition_t;
@@ -130,10 +132,11 @@ static const typed_cmd_t cmd_list[] = {
     {NULL, 0, 0}
 };
 
-
+cmd_t tux_cmd;
 /* local functions--see function headers for details */
 
 static void cancel_status_thread (void* ignore);
+static void cancel_tux_thread (void* ignore);
 static game_condition_t game_loop (void);
 static int32_t handle_typing (void);
 static void init_game (void);
@@ -144,7 +147,6 @@ static void move_photo_up (void);
 static void redraw_room (void);
 static void* status_thread (void* ignore);
 static int time_is_after (struct timeval* t1, struct timeval* t2);
-
 
 /* file-scope variables */
 
@@ -169,8 +171,8 @@ static pthread_t status_thread_id, tux_thread_id ;
 static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  msg_cv = PTHREAD_COND_INITIALIZER;
 
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t tuxlock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  tuxcv = PTHREAD_COND_INITIALIZER;
 
 static char status_msg[STATUS_MSG_LEN + 1] = {'\0'};
 
@@ -215,8 +217,6 @@ game_loop ()
 
     struct timeval cur_time; /* current time (during tick)      */
     cmd_t cmd;               /* command issued by input control */
-    int32_t enter_room;      /* player has changed rooms        */
-
     /* Record the starting time--assume success. */
     (void)gettimeofday (&start_time, NULL);
 
@@ -293,14 +293,24 @@ game_loop ()
 	 * than tick counts for timing, although the real time is rounded
 	 * off to the nearest tick by definition.
 	 */
-	/* (none right now...) */
+	/* */
+	// poll driver
+	
+	// tux_cmd = get_tux_command();
+	// // determine if button pressed
+	// pthread_mutex_lock(&tuxlock);
+	// if (tux_cmd != CMD_NONE){
+	// 	pthread_cond_signal(&tuxcv);
+	// }
+	// pthread_mutex_unlock(&tuxlock);
+
 
 	/* 
 	 * Handle synchronous events--in this case, only player commands. 
 	 * Note that typed commands that move objects may cause the room
 	 * to be redrawn.
 	 */
-	
+	display_time_on_tux(cur_time.tv_sec - start_time.tv_sec);
 	cmd = get_command ();
 	switch (cmd) {
 	    case CMD_UP:    move_photo_down ();  break;
@@ -742,14 +752,29 @@ show_status (const char* s)
     /* msg_lock critical section ends here. */
     (void)pthread_mutex_unlock (&msg_lock);
 }
+//--------------------------------------TUX THREAD------------------------------//
+static void* tux_thread(void* ignore){
+	game_condition_t result;
+// 	struct timeval start_time, tick_time;
 
-void* tux_thread(void * arg){
+//   	struct timeval cur_time; /* current time(during tick)      */
 	cmd_t cmd;
+// 	/* Record the starting time--assume success. */
+//     (void)gettimeofday(&start_time, NULL);
+   
+//    /* Calculate the time at which the first event loop tick should occur. */
+//     tick_time = start_time;
+//     if ((tick_time.tv_usec += TICK_USEC) > 1000000) {
+//         tick_time.tv_sec++;
+//         tick_time.tv_usec -= 1000000;
+//     }
 
-	(void)pthread_mutex_lock(&lock);
-
+	while(1){	
+	// (void)pthread_mutex_lock(&tuxlock);
+	// 	while(tux_cmd == CMD_NONE){
+	// 	pthread_cond_wait(&tuxcv, &tuxlock);
+	// }
 	cmd = get_tux_command();
-	
     switch (cmd) {
     case CMD_UP:    move_photo_down();  break;
     case CMD_RIGHT: move_photo_left();  break;
@@ -765,15 +790,43 @@ void* tux_thread(void * arg){
         enter_room = (TC_CHANGE_ROOM == try_to_move_right(&game_info.where));
         break;
     case CMD_QUIT: 
-		return GAME_QUIT;
+		result = GAME_QUIT;
     default: 
 		break;
         }
-	(void)pthread_mutex_unlock (&lock);
+	(void)pthread_mutex_unlock (&tuxlock);
         if (NULL == game_info.where) {
-            return GAME_WON;
+            result = GAME_WON;
         }
-	
+
+	//  /*
+    //      * Wait for tick.  The tick defines the basic timing of our
+    //      * event loop, and is the minimum amount of time between events.
+    //      */
+    //     do {
+    //         if (gettimeofday(&cur_time, NULL) != 0) {
+    //             /* Panic!(should never happen) */
+    //             clear_mode_X();
+    //             shutdown_input();
+    //             perror("gettimeofday");
+    //             exit(3);
+    //         }
+    //     } while (!time_is_after(&cur_time, &tick_time));
+
+    //     /*
+    //      * Advance the tick time.  If we missed one or more ticks completely,
+    //      * i.e., if the current time is already after the time for the next
+    //      * tick, just skip the extra ticks and advance the clock to the one
+    //      * that we haven't missed.
+    //      */
+    //     do {
+    //         if ((tick_time.tv_usec += TICK_USEC) > 1000000) {
+    //             tick_time.tv_sec++;
+    //             tick_time.tv_usec -= 1000000;
+    //         }
+    //     } while (time_is_after(&cur_time, &tick_time));
+
+}	
 return NULL;
 } 
 
@@ -804,18 +857,20 @@ main ()
 	PANIC ("failed sanity checks");
     }
 
+	open_and_initial();
+	/*create the tux thread*/
+	if (0 != pthread_create(&tux_thread_id, NULL, tux_thread, NULL)) {
+        PANIC("failed to create tux thread");
+    }
+    push_cleanup(cancel_tux_thread, NULL);{
+
     /* Create status message thread. */
     if (0 != pthread_create (&status_thread_id, NULL, status_thread, NULL)) {
         PANIC ("failed to create status thread");
     }
     push_cleanup (cancel_status_thread, NULL); {
 
-	open_and_initial();
-	/*create the tux thread*/
-	if (0 != pthread_create(&tux_thread_id, NULL, tux_thread, NULL)) {
-        PANIC("failed to create tux thread");
-    }
-    push_cleanup(cancel_tux_thread, NULL);
+
 	
 	/* Start mode X. */
 	if (0 != set_mode_X (fill_horiz_buffer, fill_vert_buffer)) {
@@ -832,10 +887,9 @@ main ()
 		game = game_loop ();
 
 	    } pop_cleanup (1);
-
-	} pop_cleanup (1);
-
-    } pop_cleanup (1);
+	}pop_cleanup (1);
+} pop_cleanup (1);
+} pop_cleanup (1);	
 
     /* Print a message about the outcome. */
     switch (game) {

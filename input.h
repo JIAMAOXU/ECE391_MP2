@@ -58,6 +58,7 @@ extern cmd_t get_command ();
 /* Get currently typed command string. */
 extern const char* get_typed_command ();
 
+extern cmd_t get_tux_command();
 /* Reset typed command. */
 extern void reset_typed_command ();
 
@@ -69,5 +70,7 @@ extern void shutdown_input ();
  * compiled for a keyboard).
  */
 extern void display_time_on_tux (int num_seconds);
+
+void open_and_initial();
 
 #endif /* INPUT_H */

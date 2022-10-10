@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "photo_headers.h": "c"
+        "photo_headers.h": "c",
+        "tuxctl-ioctl.h": "c"
     }
 }

@@ -663,7 +663,8 @@ int compare_function(const void *a, const void *b){
 		return 1;
 	else if ( (((struct octree*)b) -> pixel_loop_counter)  <  (((struct octree*)a) -> pixel_loop_counter ) )
 		return -1;
-	else if ( (((struct octree*)b) -> pixel_loop_counter)  ==  (((struct octree*)a) -> pixel_loop_counter ) )
-		return 0;
+	else {
+		return 0;}
+		
 }
 

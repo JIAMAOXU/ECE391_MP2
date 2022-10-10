@@ -32,13 +32,13 @@
 // explicit declaration of function used in this file
 int tuxctl_ioctl (struct tty_struct* tty, struct file* file, unsigned cmd, unsigned long arg);
 int tux_initial (struct tty_struct* tty);
-void tux_LED(struct tty_struct* tty,unsigned long arg);
+int tux_LED(struct tty_struct* tty,unsigned long arg);
 int tux_button (struct tty_struct* tty,unsigned long arg);
 
 
 //long is 32bit
 static unsigned long LED_save;
-unsigned char button_value;
+unsigned long button_value;
 /************************ Protocol Implementation *************************/
 
 /* tuxctl_handle_packet()
@@ -51,11 +51,12 @@ unsigned int LEFT, DOWN;
 
 void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 {
+	unsigned char buf[2];
     unsigned a, b, c;
     a = packet[0]; /* Avoid printk() sign extending the 8-bit */
     b = packet[1]; /* values when printing them. */
     c = packet[2];
-	unsigned char buf[2];
+
 
 		switch(a){
 		case MTCP_ACK:
@@ -63,10 +64,11 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 			break;
 
 		case MTCP_RESET:
-
-			tux_initial(tty);	
-			tux_LED (tty,LED_save);
-			
+		// initialize buffer
+		buf[0] = MTCP_BIOC_ON;
+		buf[1] = MTCP_LED_USR;
+		tuxctl_ldisc_put(tty, buf, 2);
+		tux_LED (tty,LED_save);
 			break ;
 
 		case MTCP_BIOC_EVENT:
@@ -144,7 +146,7 @@ int tux_initial (struct tty_struct* tty){
 }	
 
 //----------------------------- LED---------------------------//
-void tux_LED(struct tty_struct* tty,unsigned long arg){
+int tux_LED(struct tty_struct* tty,unsigned long arg){
 /* mask to display each number from 1 to 16 { 0,1,2,3
 										      4,5,6,7
 										      8,9,A,b,
@@ -223,7 +225,6 @@ tuxctl_ldisc_put(tty, buf, 6);
 
 //----------------------------- BUTTON---------------------------//
 int tux_button (struct tty_struct* tty,unsigned long arg){
-	// spin lock flag
 	//check return value
 	unsigned int user_copy;
 	unsigned long* button_pointer;
@@ -237,4 +238,3 @@ int tux_button (struct tty_struct* tty,unsigned long arg){
 		return -EFAULT;
 
 }
-
