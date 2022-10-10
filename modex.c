@@ -860,7 +860,7 @@ set_CRTC_registers (unsigned short table[NUM_CRTC_REGS])
  *   OUTPUTS: none
  *   RETURN VALUE: none
  *   SIDE EFFECTS: none
- */   
+ */     
 static void 
 set_attr_registers (unsigned char table[NUM_ATTR_REGS * 2])
 {
@@ -943,6 +943,15 @@ fill_palette_mode_x ()
     REP_OUTSB (0x03C9, palette_RGB, 64 * 3);
 }
 
+/*
+ * fill_palette
+ *   DESCRIPTION: Fill VGA palette with reset 192 colors for the adventure 
+ *                game. first 64 (of 256) colors are occupied by vga.
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: changes the reset 192 palette colors
+ */
 void fill_palette(unsigned char palette[192][3])
 {
     /* Start writing at color 0. */

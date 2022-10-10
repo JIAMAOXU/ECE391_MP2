@@ -454,6 +454,7 @@ read_photo (const char* fname)
 struct octree level2[64];
 struct octree level4[4096];
 int i,j;
+// sorted list used to store the list after qsort
 int sorted_list [4096];
 
 //------------------------------------Initialization--------------------------------//
@@ -483,6 +484,7 @@ for (j = 0; j< 4096; j++){
 	level4[j].green_sum =0;
 	// sum of blue color
 	level4[j].blue_sum =0;
+	// also initialize sorted list
 	sorted_list[j] = 0;
 }
  
@@ -522,8 +524,6 @@ for (j = 0; j< 4096; j++){
 	 p->img[p->hdr.width * y + x] = (((pixel >> 14) << 4) |(((pixel >> 9) & 0x3) << 2) |((pixel >> 3) & 0x3));*/
 	
 	// int level2_shift = (((pixel >> 14) << 4) | (((pixel >> 9) & 0x3) << 2) | ((pixel >> 3) & 0x3));
-	
-	
 	// // counter for pixel loop
 	// level2[level2_shift].pixel_loop_counter = level2[level2_shift].pixel_loop_counter + 1;
 
@@ -555,6 +555,15 @@ for (j = 0; j< 4096; j++){
 
 //------------------------------------SORT (HIGH TO LOW ORDER)--------------------------------//
 // sort level 4
+
+/*
+ * qsort
+ *   DESCRIPTION: This function sort the level 4 array 
+ *   INPUTS:  level4, size of level 4, size of octree, compare function
+ *   OUTPUTS: sorted list
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */ 
 qsort(level4, 4096, sizeof(struct octree), compare_function );
 
 //------------------------------------Calculate AVG FOR LEVEL 4--------------------------------//
@@ -562,11 +571,15 @@ qsort(level4, 4096, sizeof(struct octree), compare_function );
 // palette has RGB 6:6:6
 for (i = 0; i<128; i++){
 	if (level4[i].pixel_loop_counter != 0){
+		// red avg
 		p->palette[i][0]= (((level4[i].red_sum)   / (level4[i].pixel_loop_counter))<<1);
+		//gree avg
 		p->palette[i][1]= (level4[i].green_sum)  / (level4[i].pixel_loop_counter);
+		// blue avg
 		p->palette[i][2]= (((level4[i].blue_sum)  / (level4[i].pixel_loop_counter))<<1);		
 	}
 	else {
+		// unused palette assign 0
 		p->palette[i][0]= 0;
 		p->palette[i][1]= 0;
 		p->palette[i][2]= 0;	
@@ -579,6 +592,7 @@ for (i=128; i<4096; i++){
 	if(level4[i].pixel_loop_counter != 0){
 		// level 2 has 64 node, so addr is 6-bit, RGB = 2:2:2
 		int addr = (((level4[i].node_number >> 10) & level2_mask) << 4) | (((level4[i].node_number >> 6) & level2_mask) << 2) | ((level4[i].node_number >> 2) & level2_mask);
+		// copy level 4 [128:4096] to level 2
 		level2[addr].pixel_loop_counter += level4[i].pixel_loop_counter;		
 		level2[addr].red_sum += level4[i].red_sum;
 		level2[addr].green_sum += level4[i].green_sum;
@@ -594,18 +608,27 @@ for (i=128; i<4096; i++){
 for (i = 0; i<64; i++){
 	if (level2[i].pixel_loop_counter != 0){
 		// level 2 store in palette after level 4, so start at i+128
+		// 128 means first 128 color in palette is the occupied by level 4
 		p->palette[i+128][0]= ((level2[i].red_sum)   / (level2[i].pixel_loop_counter)<<1);
 		p->palette[i+128][1]= (level2[i].green_sum)  / (level2[i].pixel_loop_counter);
 		p->palette[i+128][2]= ((level2[i].blue_sum)  / (level2[i].pixel_loop_counter)<<1);		
 	}
 	else {
 		// level 2 store in palette after level 4, so start at i+128
+		// 128 means first 128 color in palette is the occupied by level 4
 		p->palette[i+128][0]= 0;
 		p->palette[i+128][1]= 0;
 		p->palette[i+128][2]= 0;	
 	}
 }
-
+/*
+ * fseek
+ *   DESCRIPTION: This function reopen the file
+ *   INPUTS:  in, sizeof(p->hdr), SEEK_SET
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */ 
 fseek(in, sizeof(p->hdr), SEEK_SET);
 
 //------------------------------------read pixel routine--------------------------------//
@@ -614,6 +637,12 @@ fseek(in, sizeof(p->hdr), SEEK_SET);
      * in this order, whereas in memory we store the data in the reverse
      * order (top to bottom).
      */
+
+	// loop over level 4 store node_number in sorted list. 
+	// node_number here represent the color in level4
+	// therefore, color are store same location(as they in level 4)
+	// but node value represent the order in palette
+	// we can use i to sort the order in palette
 	for (i=0; i<4096; i++){
 	sorted_list[level4[i].node_number] = i;
 }
@@ -636,7 +665,8 @@ fseek(in, sizeof(p->hdr), SEEK_SET);
 				addr += ((pixel >> 7) & fourbit_mask) << 4;
 				addr += ((pixel >> 1) & fourbit_mask);
 			int idx = sorted_list[addr];
-			if ((idx < 128) && (level4[idx].pixel_loop_counter != 0) ){	
+			if ((level4[idx].pixel_loop_counter != 0)  && (idx < 128) ){	
+			// add 64 because first 64 is used
 			p->img[p->hdr.width*y + x] = 64 + (sorted_list[addr]);
 			}
 			else {
@@ -644,6 +674,7 @@ fseek(in, sizeof(p->hdr), SEEK_SET);
 				addr = ((pixel >> 14) << 4);
 				addr += (((pixel >> 9)&level2_mask) << 2);
 				addr += ((pixel >> 3) & level2_mask);	
+			// add 64 and 128 because it was occupied
 			p->img[p->hdr.width*y + x] = 64 + 128 + addr;
 			}
 
@@ -657,7 +688,16 @@ fseek(in, sizeof(p->hdr), SEEK_SET);
     return p;
 }
 
-
+/*
+ * compare_function
+ *   DESCRIPTION: This function compare the pixel_loop_counter of two node and return 1 if a is smaller than b
+ * 				  -1 if a is larger than b , 0 if equal 
+ *   INPUTS:  a -- pointer to node a
+ * 			  B -- pointer to node b
+ *   OUTPUTS: none
+ *   RETURN VALUE: 1, -1, 0
+ *   SIDE EFFECTS: 
+ */ 
 int compare_function(const void *a, const void *b){
 	if ( (((struct octree*)b) -> pixel_loop_counter)  >  (((struct octree*)a) -> pixel_loop_counter ) )
 		return 1;

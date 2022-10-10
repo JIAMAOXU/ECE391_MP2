@@ -118,11 +118,11 @@ init_input ()
     }
  
     /* Return success. */
-	open_and_initial();
+	tux_initial();
     return 0;
 }
  
-void open_and_initial(){
+void tux_initial(){
 	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
 	int ldsic_num = N_MOUSE;
 	ioctl(fd, TIOCSETD, &ldsic_num);
@@ -289,13 +289,25 @@ get_command ()
     }
     return pushed;
 }
- 
+
+/*
+ * get_tux_command
+ *   DESCRIPTION: Reads a command from the tux controller.  As some
+ *                controllers provide only absolute input (e.g., go
+ *                right), the current direction is needed as an input
+ *                to this routine.
+ *   INPUTS: cur_dir -- current direction of motion
+ *   OUTPUTS: none
+ *   RETURN VALUE: command issued by the tux controller
+ *   SIDE EFFECTS: drains any tux input
+ */
 cmd_t
 get_tux_command ()
 {
+    unsigned char arg;
     static cmd_t command = CMD_NONE;
     static cmd_t prev_command = CMD_NONE;
-    cmd_t pushed = CMD_NONE;
+    cmd_t return_val = CMD_NONE;
     int ch;
  
     /* Read all characters from stdin. */
@@ -306,41 +318,48 @@ get_tux_command ()
         return CMD_QUIT;
     }
  
-    unsigned char button;
-    ioctl(fd, TUX_BUTTONS, &button);
-    if ((~button) & 0x80){pushed = CMD_RIGHT;
+    // poll driver
+    ioctl(fd, TUX_BUTTONS, &arg);
+    //if go right
+    if ((~arg) & right_mask){           return_val = CMD_RIGHT;
     }
-    else if ((~button) & 0x40){pushed = CMD_LEFT;
+    //if go left
+    else if ((~arg) & left_mask){       return_val = CMD_LEFT;
     }
-    else if ((~button) & 0x20){pushed = CMD_DOWN;
+    //if go up
+    else if ((~arg) & up_mask){         return_val = CMD_UP;
     }
-    else if ((~button) & 0x10){pushed = CMD_UP;
+    //if go down
+    else if ((~arg) & down_mask){       return_val = CMD_DOWN;
     }
-    else if ((~button) & 0x08){pushed = CMD_MOVE_RIGHT;
+    //if move left
+    else if ((~arg) & move_left_mask){  return_val = CMD_MOVE_LEFT;
     }
-    else if ((~button) & 0x04){pushed = CMD_ENTER;
+    //if move right
+    else if ((~arg) & move_right_mask){  return_val = CMD_MOVE_RIGHT;
     }
-    else if ((~button) & 0x02){pushed = CMD_MOVE_LEFT;
+    //if enter
+    else if ((~arg) & enter_mask){       return_val = CMD_ENTER;
     }
-    else {pushed = CMD_NONE;
+    else {                               return_val = CMD_NONE;
     }
  
     /*
      * Once a direction is pushed, that command remains active
      * until a turn is taken.
      */
-    if ((pushed == CMD_MOVE_RIGHT) |(pushed == CMD_ENTER) |(pushed == CMD_MOVE_LEFT)) {
-        if(pushed == prev_command){
+    if ((return_val == CMD_MOVE_RIGHT) |(return_val == CMD_ENTER) |(return_val == CMD_MOVE_LEFT)) {
+        if(return_val == prev_command){
             command = CMD_NONE;
         }
         else{
-            command = pushed;
+            command = return_val;
         }
     }
     else{
-        command = pushed;
+        command = return_val;
     }
-    prev_command = pushed; 
+    prev_command = return_val; 
     return command;
 }
 /*
@@ -371,21 +390,28 @@ shutdown_input ()
 void
 display_time_on_tux (int num_seconds)
 {
-    unsigned int min_ten = 0;
-    unsigned int min_one = 0;
-    unsigned int sec_ten = 0;
-    unsigned int sec_one = 0;
-    unsigned long arg = 0;
-    min_ten = ((num_seconds / 60) / 10);
-    min_one = ((num_seconds / 60) % 10);
-    sec_ten = ((num_seconds % 60) / 10);
-    sec_one = ((num_seconds % 60) % 10);
-    arg = (min_ten << 12) | (min_one << 8) | (sec_ten << 4) | (sec_one) | 0x040F0000;
+    unsigned int min_2, min_1, sec_2, sec_1;
+    unsigned long arg;
+    //Initialize value
+    min_2 = 0;
+    min_1 = 0;
+    sec_2 = 0;
+    sec_1 = 0;
+    arg = 0;
+    //calculate first place on minite
+    min_1 = ((num_seconds / 60) % 10);
+    //calculate tenth place on minite
+    min_2 = ((num_seconds / 60) / 10);
+    //calculate first place on second
+    sec_1 = ((num_seconds % 60) % 10);
+    //calculate tenth place on second
+    sec_2 = ((num_seconds % 60) / 10);
+    //create the argument and push to led
+    arg = (min_2 << Minite_tenth_offset) | (min_1 << Minite_fisrt_offset) | (sec_2 << Second_tenth_offset) | (sec_1) | LED_display_mask;
     ioctl(fd, TUX_SET_LED, arg);
 }
  
- 
- 
+
 #if (TEST_INPUT_DRIVER == 1)
 int
 main ()

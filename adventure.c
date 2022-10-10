@@ -149,12 +149,12 @@ static void* status_thread (void* ignore);
 static int time_is_after (struct timeval* t1, struct timeval* t2);
 
 /* file-scope variables */
-
+static int button_pressed = 0;
+static cmd_t cmd,tux_cmd;
 static game_info_t game_info; /* game information */
 int32_t enter_room;
-static int button_pressed = 0;
-static cmd_t cmd;
-static cmd_t tux_cmd;
+
+
 /* 
  * The variables below are used to keep track of the status message helper
  * thread, with Posix thread id recorded in status_thread_id.  
@@ -194,6 +194,15 @@ cancel_status_thread (void* ignore)
     (void)pthread_cancel (status_thread_id);
 }
 
+/* 
+ * cancel_tux_thread
+ *   DESCRIPTION: Terminates the tux thread.  Used as
+ *                a cleanup method to ensure proper shutdown.
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */
 static void
 cancel_tux_thread (void* ignore)
 {
@@ -296,36 +305,36 @@ game_loop ()
 	 * off to the nearest tick by definition.
 	 */
 	/* */
-	// poll driver
-	
-	// tux_cmd = get_tux_command();
-	// // determine if button pressed
-	// pthread_mutex_lock(&tuxlock);
-	// if (tux_cmd != CMD_NONE){
-	// 	pthread_cond_signal(&tuxcv);
-	// }
-	// pthread_mutex_unlock(&tuxlock);
-
 
 	/* 
 	 * Handle synchronous events--in this case, only player commands. 
 	 * Note that typed commands that move objects may cause the room
 	 * to be redrawn.
 	 */
+	// show game time on tux
 	display_time_on_tux(cur_time.tv_sec - start_time.tv_sec);
+	// get keyboard command
 	cmd = get_command ();
+	// get tux command
 	tux_cmd = get_tux_command ();
+	// if command is CMD_none, no button is pressed
 	if (tux_cmd == CMD_NONE) {
 		button_pressed = 0;
+	// else set button pressed to 1
 	} else {
 		button_pressed = 1;
 	}
+
+	// implment strtegy from discussion 
     (void) pthread_mutex_lock(&tuxlock);
+	// if button pressed, wake up tux thread
     if (button_pressed){
         pthread_cond_signal(&tuxcv);
     }
 	(void) pthread_mutex_unlock(&tuxlock);
+	//reset button pressed to 0
 	button_pressed = 0;
+	// keyboard command table
 	switch (cmd) {
 	    case CMD_UP:    move_photo_down ();  break;
 	    case CMD_RIGHT: move_photo_left ();  break;
@@ -767,28 +776,28 @@ show_status (const char* s)
     (void)pthread_mutex_unlock (&msg_lock);
 }
 //--------------------------------------TUX THREAD------------------------------//
+/* 
+ * tux_thread
+ *   DESCRIPTION: Function executed by tux thread.
+ *                if no button pressed, keep sleep until wake up by the game loop
+ * 				  handle tux command according to tux command table
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: NULL
+ *   SIDE EFFECTS: none
+ */
 static void* tux_thread(void* ignore){
 	game_condition_t result;
-// 	struct timeval start_time, tick_time;
-
-//   	struct timeval cur_time; /* current time(during tick)      */
-
-// 	/* Record the starting time--assume success. */
-//     (void)gettimeofday(&start_time, NULL);
-   
-//    /* Calculate the time at which the first event loop tick should occur. */
-//     tick_time = start_time;
-//     if ((tick_time.tv_usec += TICK_USEC) > 1000000) {
-//         tick_time.tv_sec++;
-//         tick_time.tv_usec -= 1000000;
-//     }
 
 	while(1){	
+	//get tux comant
     tux_cmd = get_tux_command ();
+	// if button not pressed, wait here
 	(void) pthread_mutex_lock(&tuxlock);
 	while (!button_pressed) {
 		pthread_cond_wait(&tuxcv, &tuxlock);
 	}
+	// tux command table
     switch (tux_cmd) {
     case CMD_UP:    move_photo_down();  break;
     case CMD_RIGHT: move_photo_left();  break;
@@ -812,38 +821,13 @@ static void* tux_thread(void* ignore){
 		break;
         }
         if (NULL == game_info.where) {
+			// error :return makes pointer from integer 
+			// without a cast but returns integer as desired
             result = GAME_WON;
         }
 	(void)pthread_mutex_unlock (&tuxlock);
+	// reset button pressed to 0
 	button_pressed = 0;
-
-	//  /*
-    //      * Wait for tick.  The tick defines the basic timing of our
-    //      * event loop, and is the minimum amount of time between events.
-    //      */
-    //     do {
-    //         if (gettimeofday(&cur_time, NULL) != 0) {
-    //             /* Panic!(should never happen) */
-    //             clear_mode_X();
-    //             shutdown_input();
-    //             perror("gettimeofday");
-    //             exit(3);
-    //         }
-    //     } while (!time_is_after(&cur_time, &tick_time));
-
-    //     /*
-    //      * Advance the tick time.  If we missed one or more ticks completely,
-    //      * i.e., if the current time is already after the time for the next
-    //      * tick, just skip the extra ticks and advance the clock to the one
-    //      * that we haven't missed.
-    //      */
-    //     do {
-    //         if ((tick_time.tv_usec += TICK_USEC) > 1000000) {
-    //             tick_time.tv_sec++;
-    //             tick_time.tv_usec -= 1000000;
-    //         }
-    //     } while (time_is_after(&cur_time, &tick_time));
-
 }	
 return NULL;
 } 
@@ -881,7 +865,7 @@ main ()
     }
     push_cleanup (cancel_status_thread, NULL); {
 
-	open_and_initial();
+	tux_initial();
 	/*create the tux thread*/
 	if (0 != pthread_create(&tux_thread_id, NULL, tux_thread, NULL)) {
         PANIC("failed to create tux thread");
@@ -979,3 +963,4 @@ sanity_check ()
 }
 
 #endif /* !defined(NDEBUG) */
+

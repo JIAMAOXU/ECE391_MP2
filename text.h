@@ -45,7 +45,7 @@
 #define SCROLL_X_DIM	IMAGE_X_DIM        // scroll size = image width        
 #define SCROLL_Y_DIM    IMAGE_Y_DIM        // scroll size = image height        
 #define SCROLL_X_WIDTH  (IMAGE_X_DIM / 4)  // group 4 pixel into one buffer address
-
+#define statusbar_size 1440
 /* Standard VGA text font. */
 extern unsigned char font_data[256][16];
 extern void text_to_graphics(const char * string, unsigned char * buf, int left, int center, int right);

@@ -626,10 +626,10 @@ void text_to_graphics(const char * string, unsigned char * buf, int left, int ce
                 {
                     // group 4 pixel into one buffer
                     if (row_index <= 3){ // 18*80 = 1440 status address
-                    buf[(IMAGE_X_DIM/8) - length+((row_index & 3) * (18*80))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index)] = 0x0;
+                    buf[(IMAGE_X_DIM/8) - length+((row_index & 3) * (statusbar_size))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index)] = 0x0;
                     }
                     else{               // 18*80 = 1440 status address
-                    buf[(IMAGE_X_DIM/8) - length+((row_index & 3) * (18*80))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index) + 1] = 0x0;
+                    buf[(IMAGE_X_DIM/8) - length+((row_index & 3) * (statusbar_size))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index) + 1] = 0x0;
                     }
                 }
                 bitmask = bitmask >> 1;
@@ -651,11 +651,11 @@ void text_to_graphics(const char * string, unsigned char * buf, int left, int ce
                 if ((bitcheck & bitmask) != 0)
                 {
                     // group 4 pixel into one buffer
-                    if (row_index <= 3){    // 18*80 = 1440 status address
-                    buf[IMAGE_X_WIDTH - (2*length)+((row_index & 3) * (18*80))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index)] = 0x0;
+                    if (row_index <= 3){    
+                    buf[IMAGE_X_WIDTH - (2*length)+((row_index & 3) * (statusbar_size))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index)] = 0x0;
                     }
-                    else{                   // 18*80 = 1440 status address
-                    buf[IMAGE_X_WIDTH - (2*length)+((row_index & 3) * (18*80))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index)+1] = 0x0;
+                    else{                   
+                    buf[IMAGE_X_WIDTH - (2*length)+((row_index & 3) * (statusbar_size))+((column_index + 1) * IMAGE_X_WIDTH) + (2 * char_index)+1] = 0x0;
                     }
                 }
                 bitmask = bitmask >> 1;           

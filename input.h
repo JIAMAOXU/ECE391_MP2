@@ -48,7 +48,17 @@ typedef enum {
 } cmd_t;
 
 #define MAX_TYPED_LEN 20
-
+#define Minite_tenth_offset 12
+#define Minite_fisrt_offset 8
+#define Second_tenth_offset 4
+#define LED_display_mask 0x040F0000
+#define right_mask 0x80
+#define left_mask 0x40
+#define up_mask 0x10
+#define down_mask 0x20
+#define move_left_mask 0x02
+#define move_right_mask 0x08
+#define enter_mask 0x04
 /* Initialize the input device. */
 extern int init_input ();
 
@@ -71,6 +81,6 @@ extern void shutdown_input ();
  */
 extern void display_time_on_tux (int num_seconds);
 
-void open_and_initial();
+void tux_initial();
 
 #endif /* INPUT_H */

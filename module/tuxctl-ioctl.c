@@ -48,7 +48,7 @@ unsigned long button_value;
  */
 unsigned int LEFT, DOWN;
 // buffer used for initialization
-
+int ACK; 
 void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 {
 	unsigned char buf[2];
@@ -60,7 +60,8 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 
 		switch(a){
 		case MTCP_ACK:
-		// set ACK flag to 1
+		// set ACK flag to 0
+		ACK = 0;
 			break;
 
 		case MTCP_RESET:
@@ -68,7 +69,9 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 		buf[0] = MTCP_BIOC_ON;
 		buf[1] = MTCP_LED_USR;
 		tuxctl_ldisc_put(tty, buf, 2);
+		//set LED
 		tux_LED (tty,LED_save);
+		ACK = 0;
 			break ;
 
 		case MTCP_BIOC_EVENT:
@@ -80,9 +83,11 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
 			// Here we have to flip "left" and "down"
 			// initial order: |Right|Down|Left|Up|C|B|A|Start
 			// correct order: |Right|Left|Down|Up|C|B|A|Start
-			LEFT = (c & 0x02) >>1;
-			DOWN = (c & 0x04) >>2; 
-			button_value =((b & 0xF) | ((c & 0x9) << 4) | (LEFT << 6) | (DOWN <<5));
+			LEFT = (c & Left_mask) >> Leftoffset;
+			DOWN = (c & Down_mask) >> Downoffset;
+			// six is the place for left
+			// five is the place for down 
+			button_value =((b & Fourbit_mask) | ((c & Right_Up_mask) << Coffset) | (LEFT << Six) | (DOWN << Five));
 			break;
 		default:
 			return;
@@ -104,18 +109,37 @@ void tuxctl_handle_packet (struct tty_struct* tty, unsigned char* packet)
  * valid.                                                                     *
  *                                                                            *
  ******************************************************************************/
+
+/* 
+ * tuxctl_ioctl
+ *   DESCRIPTION: tux io control function. switch to cases according to cmd
+ *   INPUTS: struct tty_struct* tty -- tux port
+ * 			 struct file* file 
+	         unsigned cmd -- command issued by the tux
+		     unsigned long arg -- package from tux
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0 or -EINVAL
+ *   SIDE EFFECTS: none
+ */
 int 
 tuxctl_ioctl (struct tty_struct* tty, struct file* file, 
 	      unsigned cmd, unsigned long arg)
 {
     switch (cmd) {
 	case TUX_INIT:
+		// call tux initialization
 		tux_initial(tty);
 		return 0;
 	case TUX_BUTTONS:
+		// call tux button handler
 		tux_button(tty,arg);
 		return 0;
-	case TUX_SET_LED:	
+	case TUX_SET_LED:
+		// if ACK = 1, leave	
+		if(ACK ==1){
+			return -1;
+		}
+		// set led
 		tux_LED(tty,arg);
 		return 0;
 	// tux tell kernal when finish processing opcode
@@ -130,7 +154,15 @@ tuxctl_ioctl (struct tty_struct* tty, struct file* file,
     }
 }
 
-//------------------------- initialization---------------------------//
+//------------------------------------- initialization----------------------------//
+/* 
+ * tux_initial
+ *   DESCRIPTION: initialize tux settings, clear button value and led save
+ *   INPUTS: struct tty_struct* tty -- tux port
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0
+ *   SIDE EFFECTS: none
+ */
 int tux_initial (struct tty_struct* tty){
 	// buffer used for initialization
 	unsigned char buf[2];
@@ -138,14 +170,27 @@ int tux_initial (struct tty_struct* tty){
 	buf[0] = MTCP_BIOC_ON;
 	buf[1] = MTCP_LED_USR;
 	tuxctl_ldisc_put(tty, buf, 2);
-	// store LED state for reset
+	// initialize LED saved value 
 	LED_save = 0;
+	// intialize button value
 	button_value = 0;
+	//set ack to 0
+	ACK = 0;
 	// success, return 0
 	return 0;
 }	
 
-//----------------------------- LED---------------------------//
+//------------------------------------- LED -----------------------------------------//
+/* 
+ * tux_LED
+ *   DESCRIPTION: retrieve led information from arg, find correspoding
+ * 				  bit, set tux led value according to mask
+ *   INPUTS: struct tty_struct* tty -- tux port
+ * 					unsigned long arg -- argument sent to tux
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0
+ *   SIDE EFFECTS: none
+ */
 int tux_LED(struct tty_struct* tty,unsigned long arg){
 /* mask to display each number from 1 to 16 { 0,1,2,3
 										      4,5,6,7
@@ -166,7 +211,6 @@ unsigned char LED_ON_OFF;
 unsigned char Decimal;
 int i;
 // led buffer initialization
-
 buf[0] = MTCP_LED_SET;
 buf[1] = 0xF;
 buf[2] = 0;
@@ -174,9 +218,9 @@ buf[3] = 0;
 buf[4] = 0;
 buf[5] = 0;
 // byte 0, lower 4 bit represent which led is on
-LED_ON_OFF = ((arg &(0x0F<<16)) >> 16);
+LED_ON_OFF = ((arg &(Fourbit_mask<<LEDoffset)) >> LEDoffset);
 
-Decimal = ((arg &(0x0F<<24)) >> 24);
+Decimal = ((arg &(Fourbit_mask<<Decimaloffset)) >> Decimaloffset);
 // If ack =1 return
 
 // 	Mapping from 7-segment to bits
@@ -199,35 +243,47 @@ Decimal = ((arg &(0x0F<<24)) >> 24);
 // __7___6___5___4____3______2______1______0___
 // | X | X | X | X | LED3 | LED2 | LED1 | LED0 | 
 // ----+---+---+---+------+------+------+------+
-//Loop to find correct LED musk, store in array form
+// Loop to find correct LED musk, store in array form
 // The low 16-bits specify a number whose
 // hexadecimal value is to be displayed on the 7-segment displays
 for(i=0; i<4; i++){
-	LED_value[i] = sixten_number_mask[(( (arg & 0xFFFF) >> (4*i) )& 0xF)];
+	LED_value[i] = sixten_number_mask[(( (arg & LED_MASK) >> (4*i) )& Fourbit_mask)];
 }
 
 // loop to load LED value if led is on
 for(i=0; i<4; i++){
-	if ((0x01 & (LED_ON_OFF >> i)) != 0){
+	if ((Onebit_mask & (LED_ON_OFF >> i)) != 0){
 		buf[i+2] = LED_value[i];
 	}
 }
 
 // loop to find decimal value
 for(i=0; i<4; i++){
-		buf[i+2] |= (((Decimal >> i)& 0x1)<<4);
+		buf[i+2] |= (((Decimal >> i)& Onebit_mask)<<4);
 }
+//save led value
 LED_save = arg;
 tuxctl_ldisc_put(tty, buf, 6);
 	return 0;
 
 }
 
-//----------------------------- BUTTON---------------------------//
+//--------------------------------------- BUTTON--------------------------------------//
+/* 
+ * tux_button
+ *   DESCRIPTION: retrieve led information from arg, find correspoding
+ * 				  bit, copy tux button to user space
+ *   INPUTS: struct tty_struct* tty -- tux port
+ * 					unsigned long arg -- argument sent to tux
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0
+ *   SIDE EFFECTS: none
+ */
 int tux_button (struct tty_struct* tty,unsigned long arg){
 	//check return value
 	unsigned int user_copy;
 	unsigned long* button_pointer;
+	// change button value data type
 	button_pointer= &(button_value);
 	//copy button value to user space 
 	user_copy = copy_to_user((void *)arg, (void*)button_pointer, sizeof(long));			
